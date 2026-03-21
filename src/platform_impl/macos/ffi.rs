@@ -117,13 +117,6 @@ extern "C" {
     pub fn CGDisplayModeRetain(mode: CGDisplayModeRef);
     pub fn CGDisplayModeRelease(mode: CGDisplayModeRef);
 
-    // Wildly used private APIs; Apple uses them for their Terminal.app.
-    pub fn CGSMainConnectionID() -> *mut AnyObject;
-    pub fn CGSSetWindowBackgroundBlurRadius(
-        connection_id: *mut AnyObject,
-        window_id: NSInteger,
-        radius: i64,
-    ) -> i32;
 }
 
 mod core_video {
