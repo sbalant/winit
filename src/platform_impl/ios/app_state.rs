@@ -1,6 +1,6 @@
 #![deny(unused_results)]
 
-use std::cell::{RefCell, RefMut};
+use std::cell::{Cell, RefCell, RefMut};
 use std::collections::HashSet;
 use std::os::raw::c_void;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -21,6 +21,14 @@ use objc2_foundation::{
     NSProcessInfo,
 };
 use objc2_ui_kit::{UIApplication, UICoordinateSpace, UIView, UIWindow};
+
+thread_local! {
+    static WINDOW_SCENE: Cell<*mut AnyObject> = const { Cell::new(ptr::null_mut()) };
+}
+
+pub(crate) fn window_scene() -> *mut AnyObject {
+    WINDOW_SCENE.with(Cell::get)
+}
 
 use super::window::WinitUIWindow;
 use crate::dpi::PhysicalSize;
@@ -459,7 +467,8 @@ pub(crate) fn will_launch(mtm: MainThreadMarker, queued_handler: EventLoopHandle
     AppState::get_mut(mtm).will_launch_transition(queued_handler)
 }
 
-pub fn did_finish_launching(mtm: MainThreadMarker) {
+pub fn did_finish_launching(mtm: MainThreadMarker, scene: *mut AnyObject) {
+    WINDOW_SCENE.with(|current| current.set(scene));
     let mut this = AppState::get_mut(mtm);
     let windows = match this.state_mut() {
         AppStateImpl::Launching { queued_windows, .. } => mem::take(queued_windows),
@@ -485,6 +494,8 @@ pub fn did_finish_launching(mtm: MainThreadMarker) {
         let screen = window.screen();
         let _: () = unsafe { msg_send![&window, setScreen: ptr::null::<AnyObject>()] };
         window.setScreen(&screen);
+
+        let _: () = unsafe { msg_send![&window, setWindowScene: scene] };
 
         let controller = window.rootViewController();
         window.setRootViewController(None);

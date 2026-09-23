@@ -82,6 +82,11 @@ impl WinitUIWindow {
     ) -> Retained<Self> {
         let this: Retained<Self> = unsafe { msg_send_id![mtm.alloc(), initWithFrame: frame] };
 
+        let scene = app_state::window_scene();
+        if !scene.is_null() {
+            let _: () = unsafe { msg_send![&this, setWindowScene: scene] };
+        }
+
         this.setRootViewController(Some(view_controller));
 
         match window_attributes.fullscreen.clone().map(Into::into) {
