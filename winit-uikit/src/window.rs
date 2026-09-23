@@ -31,7 +31,7 @@ use winit_core::window::{
 use super::app_state::EventWrapper;
 use super::view::WinitView;
 use super::view_controller::WinitViewController;
-use super::{app_state, monitor};
+use super::{app_state, monitor, scene};
 use crate::event_loop::ActiveEventLoop;
 use crate::monitor::MonitorHandle;
 use crate::{ScreenEdge, StatusBarStyle, ValidOrientations, WindowAttributesIos};
@@ -83,6 +83,11 @@ impl WinitUIWindow {
         let this: Retained<Self> = unsafe { msg_send![mtm.alloc(), initWithFrame: frame] };
 
         this.setRootViewController(Some(view_controller));
+
+        // With the scene life cycle, the window scene decides the screen (see `scene.rs`).
+        if scene::uses_scene_lifecycle() {
+            return this;
+        }
 
         match window_attributes.fullscreen.clone() {
             Some(Fullscreen::Exclusive(monitor, ref video_mode)) => {
@@ -334,7 +339,7 @@ impl Inner {
 
         // this is pretty slow on iOS, so avoid doing it if we can
         let current = self.window.screen();
-        if uiscreen != current {
+        if uiscreen != current && !scene::uses_scene_lifecycle() {
             self.window.setScreen(&uiscreen);
         }
 
@@ -540,7 +545,7 @@ impl Window {
 
         let view_controller = WinitViewController::new(mtm, &ios_attributes, &view);
         let window = WinitUIWindow::new(mtm, &window_attributes, frame, &view_controller);
-        window.makeKeyAndVisible();
+        scene::show_window(mtm, &window);
 
         let inner = Inner {
             window,
