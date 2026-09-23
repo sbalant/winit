@@ -183,6 +183,7 @@ features = [
     "block2",
     "dispatch",
     "NSArray",
+    "NSBundle",
     "NSEnumerator",
     "NSGeometry",
     "NSObjCRuntime",

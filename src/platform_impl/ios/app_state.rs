@@ -495,7 +495,9 @@ pub fn did_finish_launching(mtm: MainThreadMarker, scene: *mut AnyObject) {
         let _: () = unsafe { msg_send![&window, setScreen: ptr::null::<AnyObject>()] };
         window.setScreen(&screen);
 
-        let _: () = unsafe { msg_send![&window, setWindowScene: scene] };
+        if !scene.is_null() {
+            let _: () = unsafe { msg_send![&window, setWindowScene: scene] };
+        }
 
         let controller = window.rootViewController();
         window.setRootViewController(None);

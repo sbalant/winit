@@ -15,7 +15,7 @@ use core_foundation::runloop::{
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{msg_send_id, ClassType};
-use objc2_foundation::{MainThreadMarker, NSNotificationCenter, NSObject};
+use objc2_foundation::{ns_string, MainThreadMarker, NSBundle, NSNotificationCenter, NSObject};
 use objc2_ui_kit::{
     UIApplication, UIApplicationDidBecomeActiveNotification,
     UIApplicationDidEnterBackgroundNotification, UIApplicationDidFinishLaunchingNotification,
@@ -49,32 +49,6 @@ pub extern "C" fn winit_scene_connected(scene: *mut AnyObject) {
             app_state::did_finish_launching(mtm, scene);
         }
     });
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn winit_scene_did_become_active() {
-    let mtm = MainThreadMarker::new().expect("scene callbacks must run on the main thread");
-    app_state::handle_nonuser_event(mtm, EventWrapper::StaticEvent(Event::Resumed));
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn winit_scene_will_resign_active() {
-    let mtm = MainThreadMarker::new().expect("scene callbacks must run on the main thread");
-    app_state::handle_nonuser_event(mtm, EventWrapper::StaticEvent(Event::Suspended));
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn winit_scene_will_enter_foreground() {
-    let mtm = MainThreadMarker::new().expect("scene callbacks must run on the main thread");
-    let app = UIApplication::sharedApplication(mtm);
-    send_occluded_event_for_all_windows(&app, false);
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn winit_scene_did_enter_background() {
-    let mtm = MainThreadMarker::new().expect("scene callbacks must run on the main thread");
-    let app = UIApplication::sharedApplication(mtm);
-    send_occluded_event_for_all_windows(&app, true);
 }
 
 #[derive(Debug)]
@@ -224,31 +198,62 @@ impl<T: 'static> EventLoop<T> {
             &center,
             // `application:didFinishLaunchingWithOptions:`
             unsafe { UIApplicationDidFinishLaunchingNotification },
-            move |_| {},
+            move |_| {
+                // Scene-based apps finish window setup when UIKit connects the scene.
+                // Legacy apps still launch through the application notification.
+                if unsafe {
+                    NSBundle::mainBundle()
+                        .objectForInfoDictionaryKey(ns_string!("UIApplicationSceneManifest"))
+                }
+                .is_none()
+                {
+                    app_state::did_finish_launching(mtm, ptr::null_mut());
+                }
+            },
         );
         let _did_become_active_observer = create_observer(
             &center,
             // `applicationDidBecomeActive:`
             unsafe { UIApplicationDidBecomeActiveNotification },
-            move |_| {},
+            move |_| {
+                app_state::handle_nonuser_event(mtm, EventWrapper::StaticEvent(Event::Resumed));
+            },
         );
         let _will_resign_active_observer = create_observer(
             &center,
             // `applicationWillResignActive:`
             unsafe { UIApplicationWillResignActiveNotification },
-            move |_| {},
+            move |_| {
+                app_state::handle_nonuser_event(mtm, EventWrapper::StaticEvent(Event::Suspended));
+            },
         );
         let _will_enter_foreground_observer = create_observer(
             &center,
             // `applicationWillEnterForeground:`
             unsafe { UIApplicationWillEnterForegroundNotification },
-            move |_| {},
+            move |notification| {
+                let app = unsafe { notification.object() }.expect(
+                    "UIApplicationWillEnterForegroundNotification to have application object",
+                );
+                // SAFETY: The `object` in `UIApplicationWillEnterForegroundNotification` is
+                // documented to be `UIApplication`.
+                let app: Retained<UIApplication> = unsafe { Retained::cast(app) };
+                send_occluded_event_for_all_windows(&app, false);
+            },
         );
         let _did_enter_background_observer = create_observer(
             &center,
             // `applicationDidEnterBackground:`
             unsafe { UIApplicationDidEnterBackgroundNotification },
-            move |_| {},
+            move |notification| {
+                let app = unsafe { notification.object() }.expect(
+                    "UIApplicationDidEnterBackgroundNotification to have application object",
+                );
+                // SAFETY: The `object` in `UIApplicationDidEnterBackgroundNotification` is
+                // documented to be `UIApplication`.
+                let app: Retained<UIApplication> = unsafe { Retained::cast(app) };
+                send_occluded_event_for_all_windows(&app, true);
+            },
         );
         let _will_terminate_observer = create_observer(
             &center,
