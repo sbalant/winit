@@ -9,7 +9,8 @@ use objc2_ui_kit::{
     UIApplication, UIApplicationDidBecomeActiveNotification,
     UIApplicationDidEnterBackgroundNotification, UIApplicationDidFinishLaunchingNotification,
     UIApplicationDidReceiveMemoryWarningNotification, UIApplicationWillEnterForegroundNotification,
-    UIApplicationWillResignActiveNotification, UIApplicationWillTerminateNotification, UIScreen,
+    UIApplicationWillResignActiveNotification, UIApplicationWillTerminateNotification,
+    UISceneWillConnectNotification, UIScreen,
 };
 use rwh_06::HasDisplayHandle;
 use tracing::debug_span;
@@ -26,6 +27,7 @@ use winit_core::window::{Theme, Window as CoreWindow};
 
 use super::app_state::{AppState, send_occluded_event_for_all_windows};
 use super::notification_center::create_observer;
+use super::scene;
 use crate::monitor::MonitorHandle;
 use crate::window::Window;
 use crate::{app_state, monitor};
@@ -133,6 +135,7 @@ pub struct EventLoop {
     _will_enter_foreground_observer: Retained<ProtocolObject<dyn NSObjectProtocol>>,
     _did_enter_background_observer: Retained<ProtocolObject<dyn NSObjectProtocol>>,
     _will_terminate_observer: Retained<ProtocolObject<dyn NSObjectProtocol>>,
+    _scene_will_connect_observer: Retained<ProtocolObject<dyn NSObjectProtocol>>,
     _did_receive_memory_warning_observer: Retained<ProtocolObject<dyn NSObjectProtocol>>,
 
     _tracing_observers: Option<(MainRunLoopObserver, MainRunLoopObserver)>,
@@ -229,6 +232,17 @@ impl EventLoop {
                 app_state::terminated(&app);
             },
         );
+        let _scene_will_connect_observer = create_observer(
+            &center,
+            // `scene:willConnectToSession:options:`
+            unsafe { UISceneWillConnectNotification },
+            move |notification| {
+                let _entered = debug_span!("UISceneWillConnectNotification").entered();
+                let scene =
+                    notification.object().expect("UISceneWillConnectNotification to have scene");
+                scene::scene_will_connect(&scene);
+            },
+        );
         let _did_receive_memory_warning_observer = create_observer(
             &center,
             // `applicationDidReceiveMemoryWarning:`
@@ -301,6 +315,7 @@ impl EventLoop {
             _will_enter_foreground_observer,
             _did_enter_background_observer,
             _will_terminate_observer,
+            _scene_will_connect_observer,
             _did_receive_memory_warning_observer,
             _tracing_observers,
             _wakeup_observer,
